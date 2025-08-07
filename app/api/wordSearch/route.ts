@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import { NextRequest, NextResponse } from 'next/server';
 
-const MONGO_URI = process.env.MONGO_URI;
+const MONGO_URI = 'mongodb+srv://root:root@cluster0.jt307.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 
 const connect = async () => {
   if (mongoose.connection.readyState === 1) return;
@@ -39,7 +39,7 @@ export const GET = async (req: NextRequest) => {
       });
     }
 
-    const collection = mongoose.connection.db.collection('dictionary');
+    const collection = mongoose.connection.db!.collection('dictionary');
     console.log(offset)
     const docs = await collection
       .find({ 'id.level': level, 'id.uid': { $gt: offset } })

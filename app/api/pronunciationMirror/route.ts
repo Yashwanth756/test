@@ -31,7 +31,7 @@ export const GET = async (req: Request) => {
       );
     }
     console.log
-    const collection = mongoose.connection.db.collection('dictionary');
+    const collection = mongoose.connection.db!.collection('dictionary');
     const data = await collection.findOne({ 'id.uid': uid, 'id.level': level });
     console.log('hello')
     if (!data) {
