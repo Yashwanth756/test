@@ -16,35 +16,58 @@ export const GET = async (req: Request) => {
     await connect();
 
     const { searchParams } = new URL(req.url);
-    const uid = parseInt(searchParams.get('uid') || '');
+    const offset = parseInt(searchParams.get('offset') || '');
     const level = searchParams.get('level');
 
-    if (!uid || !level) {
-      return NextResponse.json(
-        { error: 'Missing uid or level query parameter' },
-        { status: 400 }
-      );
+    if (isNaN(offset) || !level) {
+      return new NextResponse(JSON.stringify({
+        error: 'Missing or invalid offset or level query parameter',
+      }), {
+        status: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
     }
 
     const collection = mongoose.connection.db!.collection('dictionary');
 
-    // 🧠 Only fetch the `id.word` field using projection
-    const result = await collection.findOne(
-      { 'id.uid': uid, 'id.level': level },
-      { projection: { 'id.word': 1, _id: 0 } }
-    );
+    const docs = await collection.find(
+      {
+        'id.level': level,
+        'id.uid': { $gte: offset },
+      },
+      {
+        projection: {
+          'id.word': 1,
+          'id.level': 1,
+          _id: 0,
+        },
+      }
+    )
+    .sort({ 'id.uid': 1 })
+    .limit(10)
+    .toArray();
 
-    if (!result) {
-      return NextResponse.json(
-        { message: 'No entry found for given uid and level' },
-        { status: 404 }
-      );
-    }
+    const result = docs.map(doc => ({
+      word: doc.id.word,
+      difficulty: doc.id.level,
+    }));
 
-    // 🧼 Return only the word
-    return NextResponse.json({ word: result.id.word }, { status: 200 });
+    return new NextResponse(JSON.stringify(result), {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*', // 🔥 This enables CORS
+      },
+    });
+
   } catch (error) {
-    console.error('Error fetching word:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('Error fetching words:', error);
+    return new NextResponse(JSON.stringify({ error: 'Internal server error' }), {
+      status: 500,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
   }
 };

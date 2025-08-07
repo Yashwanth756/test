@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 const MONGO_URI = process.env.MONGO_URI;
 
@@ -15,78 +15,109 @@ function shuffleArray(array: string[]): string[] {
   return array.sort(() => Math.random() - 0.5);
 }
 
-export const GET = async (req: Request) => {
+export const GET = async (req: NextRequest) => {
   try {
     await connect();
 
     const { searchParams } = new URL(req.url);
-    const uid = parseInt(searchParams.get('uid') || '');
+    const offset = parseInt(searchParams.get('offset') || '');
     const level = searchParams.get('level');
 
-    if (!uid || !level) {
+    if (isNaN(offset) || !level) {
       return NextResponse.json(
-        { error: 'Missing uid or level' },
+        { error: 'Missing or invalid offset or level' },
         { status: 400 }
       );
     }
 
     const collection = mongoose.connection.db!.collection('dictionary');
 
-    // ✅ Fetch main word and full senses array
-    const mainDoc = await collection.findOne(
-      { 'id.uid': uid, 'id.level': level },
-      { projection: { 'id.word': 1, senses: 1, _id: 0 } }
-    );
+    // Fetch 10 main documents starting from uid = offset
+    const mainDocs = await collection
+      .find(
+        { 'id.level': level, 'id.uid': { $gte: offset } },
+        { projection: { 'id.word': 1, senses: 1, 'id.uid': 1 } }
+      )
+      .sort({ 'id.uid': 1 })
+      .limit(10)
+      .toArray();
 
-    const firstSense = mainDoc?.senses?.[0];
-    const shortDef = firstSense?.shortdefinition;
-
-    if (!mainDoc || !mainDoc.id?.word || !shortDef) {
+    if (!mainDocs.length) {
       return NextResponse.json(
-        { error: 'Word or shortdefinition not found' },
+        { error: 'No words found for given offset/level' },
         { status: 404 }
       );
     }
 
-    const word = mainDoc.id.word;
-    const correctDefinition = shortDef;
+    // Randomly sample 50 distractor documents
+    const distractorDocs = await collection.aggregate([
+      { $match: { 'id.level': level } },
+      { $sample: { size: 50 } },
+      { $project: { senses: 1, _id: 0 } }
+    ]).toArray();
 
-    // ✅ Sample 50 other docs and filter those with shortdefinition
-    const randomDocs = await collection
-      .aggregate([
-        { $match: { 'id.level': level, 'id.uid': { $ne: uid } } },
-        { $sample: { size: 50 } },
-        { $project: { senses: 1 } }
-      ])
-      .toArray();
+    console.log(`Fetched ${distractorDocs.length} distractor documents`);
 
-    const validWrongDefs = randomDocs
-      .map(doc => doc.senses?.[0]?.shortdefinition)
-      .filter(def => typeof def === 'string' && def !== correctDefinition);
+    const allDistractors = distractorDocs
+      .map(doc => doc.senses?.[0]?.shortdefinition || doc.senses?.[0]?.definition)
+      .filter(def => typeof def === 'string' && def.trim().length > 0);
 
-    if (validWrongDefs.length < 3) {
-      return NextResponse.json(
-        { error: 'Not enough distractors found in sampled documents' },
-        { status: 500 }
-      );
-    }
+    const formattedResults = mainDocs.map(doc => {
+      const sense = doc.senses?.[0];
+      const correctDef = sense?.shortdefinition || sense?.definition;
+      const word = doc.id.word;
+      const pos = sense?.pos || '';
+      const hint = sense?.syllables || '';
+      const example = sense?.sentences?.[0] || '';
 
-    const wrongDefinitions = shuffleArray(validWrongDefs).slice(0, 3);
-    const options = shuffleArray([correctDefinition, ...wrongDefinitions]);
+      const wrongDefinitions = shuffleArray(
+        allDistractors.filter(def => def !== correctDef)
+      ).slice(0, 3);
 
-    return NextResponse.json(
-      {
+      return {
         word,
-        correctDefinition,
-        options
-      },
-      { status: 200 }
-    );
+        definition: correctDef || '',
+        wrongDefinitions,
+        partOfSpeech: pos,
+        hint,
+        example,
+        difficulty: level
+      };
+    });
+
+    const response = NextResponse.json(formattedResults, { status: 200 });
+
+    // ✅ Add CORS headers
+    response.headers.set('Access-Control-Allow-Origin', '*');
+    response.headers.set('Access-Control-Allow-Methods', 'GET,OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type');
+
+    return response;
   } catch (error) {
     console.error('Error generating quiz:', error);
-    return NextResponse.json(
+
+    const errorResponse = NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
     );
+
+    // ✅ Add CORS headers to error response too
+    errorResponse.headers.set('Access-Control-Allow-Origin', '*');
+    errorResponse.headers.set('Access-Control-Allow-Methods', 'GET,OPTIONS');
+    errorResponse.headers.set('Access-Control-Allow-Headers', 'Content-Type');
+
+    return errorResponse;
   }
+};
+
+// ✅ CORS Preflight Handler
+export const OPTIONS = () => {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET,OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    },
+  });
 };

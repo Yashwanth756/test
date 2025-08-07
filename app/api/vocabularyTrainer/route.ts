@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
-const MONGO_URI = process.env.MONGO_URI;
+const MONGO_URI = process.env.MONGO_URI ;
 
 const connect = async () => {
   if (mongoose.connection.readyState === 1) return;
@@ -11,42 +11,62 @@ const connect = async () => {
   });
 };
 
-export const GET = async (req: Request) => {
+export const GET = async (req: NextRequest) => {
   try {
     await connect();
 
-    const { searchParams } = new URL(req.url);
-    const uid = parseInt(searchParams.get('uid') || '');
-    const level = searchParams.get('level');
+    const level = req.nextUrl.searchParams.get('level');
+    const offset = parseInt(req.nextUrl.searchParams.get('offset') || '0');
 
-    if (!uid || !level) {
-      return NextResponse.json(
-        { error: 'Missing uid or level query parameter' },
-        { status: 400 }
-      );
+    if (level == undefined) {
+      return new NextResponse(JSON.stringify({ error: 'Missing level parameter' }), {
+        status: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
     }
 
     const collection = mongoose.connection.db!.collection('dictionary');
 
-    // Fetch id.word and senses[0] using projection
-    const result = await collection.findOne(
-      { 'id.uid': uid, 'id.level': level },
-      { projection: { 'id.word': 1, senses: 1, _id: 0 } }
-    );
+    const docs = await collection
+      .find({ 'id.level': level })
+      .skip(offset)
+      .limit(10)
+      .toArray();
 
-    if (!result || !result.senses || result.senses.length === 0) {
-      return NextResponse.json(
-        { message: 'No senses found for given uid and level' },
-        { status: 404 }
-      );
-    }
+    const formatted = docs.map((doc) => {
+      const sense = doc.senses?.[0];
 
-    const word = result.id.word;
-    const firstSense = result.senses[0];
+      return {
+        word: doc.id.word || '',
+        meaning: sense?.definition || '',
+        example: sense?.sentences?.[0] || '',
+        partOfSpeech: sense?.pos || '',
+        phonetic: sense?.syllables || '',
+        synonyms: sense?.synonyms || [],
+        antonyms: Array.isArray(sense?.antonyms)
+          ? sense.antonyms
+              .map((a: any) => (typeof a === 'string' ? a : a.word))
+              .filter(Boolean)
+          : [],
+        memoryTip: sense?.memoryTip || '',
+      };
+    });
 
-    return NextResponse.json({ word, ...firstSense }, { status: 200 });
+    return new NextResponse(JSON.stringify(formatted), {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
   } catch (error) {
-    console.error('Error fetching data:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('Error fetching words:', error);
+    return new NextResponse(JSON.stringify({ error: 'Failed to fetch words' }), {
+      status: 500,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
   }
 };
