@@ -1,11 +1,12 @@
 import mongoose from 'mongoose';
 import { NextRequest, NextResponse } from 'next/server';
 
-const MONGO_URI = 'mongodb+srv://root:root@cluster0.jt307.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0' ;
+const MONGO_URI =
+  'mongodb+srv://root:root@cluster0.jt307.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 
 const connect = async () => {
   if (mongoose.connection.readyState === 1) return;
-  await mongoose.connect(MONGO_URI!, {
+  await mongoose.connect(MONGO_URI, {
     dbName: 'school',
     bufferCommands: false,
   });
@@ -18,7 +19,7 @@ export const GET = async (req: NextRequest) => {
     const level = req.nextUrl.searchParams.get('level');
     const offset = parseInt(req.nextUrl.searchParams.get('offset') || '0');
 
-    if (level == undefined) {
+    if (level === undefined) {
       return new NextResponse(JSON.stringify({ error: 'Missing level parameter' }), {
         status: 400,
         headers: {
@@ -47,7 +48,9 @@ export const GET = async (req: NextRequest) => {
         synonyms: sense?.synonyms || [],
         antonyms: Array.isArray(sense?.antonyms)
           ? sense.antonyms
-              .map((a: any) => (typeof a === 'string' ? a : a.word))
+              .map((a: string | { word: string }) =>
+                typeof a === 'string' ? a : a.word
+              )
               .filter(Boolean)
           : [],
         memoryTip: sense?.memoryTip || '',

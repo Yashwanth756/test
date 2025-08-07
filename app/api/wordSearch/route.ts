@@ -5,7 +5,7 @@ const MONGO_URI = 'mongodb+srv://root:root@cluster0.jt307.mongodb.net/?retryWrit
 
 const connect = async () => {
   if (mongoose.connection.readyState === 1) return;
-  await mongoose.connect(MONGO_URI!, {
+  await mongoose.connect(MONGO_URI, {
     dbName: 'school',
     bufferCommands: false,
   });
@@ -30,7 +30,7 @@ export const GET = async (req: NextRequest) => {
     const level = req.nextUrl.searchParams.get('level');
     const offset = parseInt(req.nextUrl.searchParams.get('offset') || '0');
 
-    if (level == undefined) {
+    if (level === undefined) {
       return new NextResponse(JSON.stringify({ error: 'Missing level parameter' }), {
         status: 400,
         headers: {
@@ -40,13 +40,16 @@ export const GET = async (req: NextRequest) => {
     }
 
     const collection = mongoose.connection.db!.collection('dictionary');
-    console.log(offset)
+    console.log(offset);
+
     const docs = await collection
       .find({ 'id.level': level, 'id.uid': { $gt: offset } })
       .limit(10)
       .toArray();
-    console.log(docs)
-    const formatted = docs.map((doc, index) => {
+
+    console.log(docs);
+
+    const formatted = docs.map((doc) => {
       const sense = doc.senses?.[0];
       return {
         word: doc.id.word || '',
