@@ -1,12 +1,12 @@
 import mongoose from 'mongoose';
 import { NextResponse } from 'next/server';
 
-const MONGO_URI = 'mongodb+srv://root:root@cluster0.jt307.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
+const MONGO_URI = 'mongodb+srv://echo2k25ai_db_user:tzhpHeCX5BvwoWny@cluster0.wekdvif.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 
 const connect = async () => {
   if (mongoose.connection.readyState === 1) return;
   await mongoose.connect(MONGO_URI!, {
-    dbName: 'school',
+    dbName: 'mrms',
     bufferCommands: false,
   });
 };
